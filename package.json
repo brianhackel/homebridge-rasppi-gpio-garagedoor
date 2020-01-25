@@ -1,6 +1,6 @@
 {
   "name": "homebridge-rasppi-gpio-garagedoor",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Exposes a garage door accessory to HomeBridge that uses a RaspberryPi GPIO pins",
   "main": "index.js",
   "scripts": {
@@ -11,21 +11,21 @@
     "homebridge",
     "garagedoor"
   ],
-  "author": "Ben La Monica <ben.lamonica@gmail.com>",
+  "author": "Ben La Monica <ben.lamonica@gmail.com>, Brian Hackel",
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/benlamonica/homebridge-rasppi-gpio-garagedoor.git"
+    "url": "https://github.com/bhackel6/homebridge-rasppi-gpio-garagedoor.git"
   },
   "bugs": {
-    "url": "https://github.com/benlamonica/homebridge-rasppi-gpio-garagedoor/issues"
+    "url": "https://github.com/bhackel6/homebridge-rasppi-gpio-garagedoor/issues"
   },
-  "homepage": "https://github.com/benlamonica/homebridge-rasppi-gpio-garagedoor",
+  "homepage": "https://github.com/bhackel6/homebridge-rasppi-gpio-garagedoor",
   "engines": {
     "node": ">=0.12.0",
     "homebridge": ">=0.2.0"
   },
   "dependencies": {
-    "rpio": "^0.9.13"
+    "onoff": "^5.0.1"
   }
 }
