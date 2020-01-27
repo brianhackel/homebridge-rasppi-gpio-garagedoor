@@ -81,7 +81,7 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
             this.closedDoorSensor.watch(function (err, value) { //Watch for hardware interrupts
                 if (err) { //if an error
                     console.error('There was an error', err); //output error message to console
-                    this.currentDoorState.updateValue(DoorState.MISSING);
+                    this.currentDoorState.updateValue(DoorState.STOPPED);
                 }
                 if (value == this.closedDoorSensorValue) {
                     console.log("door is closed");
@@ -98,7 +98,7 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
         this.openDoorSensor.watch(function (err, value) { //Watch for hardware interrupts
             if (err) { //if an error
                 console.error('There was an error', err); //output error message to console
-                this.currentDoorState.updateValue(DoorState.MISSING);
+                this.currentDoorState.updateValue(DoorState.STOPPED);
             }
             if (value == this.openDoorSensorValue) {
                 console.log("door is open");
@@ -132,51 +132,42 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
 
     switchOn: function() {
         this.writePin(this.doorSwitchPin, this.relayOn);
-        this.log("Turning on GarageDoor Relay, pin " + this.doorSwitchPin + " = " + this.relayOn);
-        setTimeout(this.switchOff.bind(this), this.doorSwitchPressTimeInMs);
-    },
-
-    switchOff: function() {
-        this.writePin(this.doorSwitchPin, this.relayOff);
-        this.log("Turning off GarageDoor Relay, pin " + this.doorSwitchPin + " = " + this.relayOff);
+        this.log("Pushing the garage door button.");
+        setTimeout(() => this.writePin(this.doorSwitchPin, this.relayOff), this.doorSwitchPressTimeInMs);
     },
 
     setFinalDoorState: function() {
         // basically, this just needs to check if we're still OPENING or CLOSING,
         //       and if so, signal a problem and set state to STOPPED i guess
-        if ( (this.targetState == DoorState.CLOSED && !this.isClosed) || (this.targetState == DoorState.OPEN && !this.isOpen) ) {
-            this.log("Was trying to " + (this.targetState == DoorState.CLOSED ? "CLOSE" : "OPEN") + " the door, but it is still " + (isClosed ? "CLOSED":"OPEN"));
+        if ( (this.targetState == DoorState.CLOSED && !this.isClosed()) || (this.targetState == DoorState.OPEN && !this.isOpen()) ) {
+            this.log("Was trying to " + (this.targetState == DoorState.CLOSED ? "CLOSE" : "OPEN") + " the door, but it is still " + (this.isClosed() ? "CLOSED":"OPEN"));
             this.currentDoorState.updateValue(DoorState.STOPPED);
         }
     },
 
-    
-    // TODO: this is where we left off
-    
-    
-  setState: function(state, callback) {
-    this.log("Setting state to " + state);
-    this.targetState = state;
-    var isClosed = this.isClosed();
-    if ((state == DoorState.OPEN && isClosed) || (state == DoorState.CLOSED && !isClosed)) {
-        this.log("Triggering GarageDoor Relay");
-         setTimeout(this.setFinalDoorState.bind(this), this.doorOpensInSeconds * 1000);
-         this.switchOn();
+    setState: function(state, callback) {
+        this.log("Setting state to " + state);
+        this.targetState = state;
+        var isClosed = this.isClosed();
+        if ((state == DoorState.OPEN && this.isClosed) || (state == DoorState.CLOSED && this.isOpen)) {
+            this.log("Triggering GarageDoor Relay");
+            setTimeout(this.setFinalDoorState.bind(this), this.doorOpensInSeconds * 1000);
+            this.switchOn();
+        }
+        callback(null);
+    },
+
+    getState: function(callback) {
+        var isClosed = this.isClosed();
+        var isOpen = this.isOpen();
+        // TODO: do i need to have this function try to determine OPENING/CLOSING state?
+        //       or is OPEN/CLOSED/STOPPED good enough?
+        var state = isClosed ? DoorState.CLOSED : isOpen ? DoorState.OPEN : DoorState.STOPPED;
+        this.log("GarageDoor is " + (isClosed ? "CLOSED ("+DoorState.CLOSED+")" : isOpen ? "OPEN ("+DoorState.OPEN+")" : "STOPPED (" + DoorState.STOPPED + ")")); 
+        callback(null, state);
+    },
+
+    getServices: function() {
+        return [this.infoService, this.garageDoorOpener];
     }
-
-    callback();
-    return true;
-  },
-
-  getState: function(callback) {
-    var isClosed = this.isClosed();
-    var isOpen = this.isOpen();
-    var state = isClosed ? DoorState.CLOSED : isOpen ? DoorState.OPEN : DoorState.STOPPED;
-    this.log("GarageDoor is " + (isClosed ? "CLOSED ("+DoorState.CLOSED+")" : isOpen ? "OPEN ("+DoorState.OPEN+")" : "STOPPED (" + DoorState.STOPPED + ")")); 
-    callback(null, state);
-  },
-
-  getServices: function() {
-    return [this.infoService, this.garageDoorOpener];
-  }
 };
