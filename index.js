@@ -83,18 +83,19 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
             .setCharacteristic(Characteristic.SerialNumber, "Version 1.0.0");
         
         this.doorButton = new Gpio(this.doorSwitchPin, this.relayOff ? 'high' : 'low');
-        this.closedDoorSensor = new Gpio(this.closedDoorSensorPin, 'in', 'both', {debounceTimeout: 10});
-        this.openDoorSensor = new Gpio(this.openDoorSensorPin, 'in', 'both', {debounceTimeout: 10});
+        this.closedDoorSensor = new Gpio(this.closedDoorSensorPin, 'in', 'both', {debounceTimeout: 100});
+        this.openDoorSensor = new Gpio(this.openDoorSensorPin, 'in', 'both', {debounceTimeout: 100});
        
         var initialDoorState = DoorState.STOPPED;
+        this.operating = false;
         if (this.isClosed()) initialDoorState = DoorState.CLOSED;
         if (this.isOpen()) initialDoorState = DoorState.OPEN;
         this.log("Initial Door State: " + doorStateToString(initialDoorState));
         this.currentDoorState.updateValue(initialDoorState);
         this.targetDoorState.updateValue(initialDoorState);
     
+        var that = this;
         this.closedDoorSensor.watch(function (err, value) { //Watch for hardware interrupts
-            var that = this;
             if (err) { //if an error
                 console.error('There was an error', err); //output error message to console
                 that.currentDoorState.updateValue(DoorState.STOPPED);
@@ -109,7 +110,6 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
         });
         
         this.openDoorSensor.watch(function (err, value) { //Watch for hardware interrupts
-            var that = this;
             if (err) { //if an error
                 console.error('There was an error', err); //output error message to console
                 that.currentDoorState.updateValue(DoorState.STOPPED);
@@ -164,6 +164,7 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
     setFinalDoorState: function() {
         // basically, this just needs to check if we're still OPENING or CLOSING,
         //       and if so, signal a problem and set state to STOPPED i guess
+        this.operating = false;
         if ( (this.targetState == DoorState.CLOSED && !this.isClosed()) || (this.targetState == DoorState.OPEN && !this.isOpen()) ) {
             this.log("Was trying to " + (this.targetState == DoorState.CLOSED ? "CLOSE" : "OPEN") + " the door, but it is still " + (this.isClosed() ? "CLOSED":"OPEN"));
             this.currentDoorState.updateValue(DoorState.STOPPED);
@@ -178,6 +179,7 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
             this.log("Triggering GarageDoor Relay");
             setTimeout(this.setFinalDoorState.bind(this), this.doorOpensInSeconds * 1000);
             this.switchOn();
+            this.operating = true;
         }
         callback(null);
     },
@@ -187,7 +189,13 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
         var isOpen = this.isOpen();
         // TODO: do i need to have this function try to determine OPENING/CLOSING state?
         //       or is OPEN/CLOSED/STOPPED good enough?
-        var state = isClosed ? DoorState.CLOSED : isOpen ? DoorState.OPEN : DoorState.STOPPED;
+        // FIXME: look at the target state, compare to isopen and isclosed to determine
+        let state;
+        if (this.operating) {
+            state = this.targetState == DoorState.OPEN ? DoorState.OPENING : DoorState.CLOSING;
+        } else {
+            state = isClosed ? DoorState.CLOSED : isOpen ? DoorState.OPEN : DoorState.STOPPED;
+        }
         this.log("GarageDoor is " + (isClosed ? "CLOSED ("+DoorState.CLOSED+")" : isOpen ? "OPEN ("+DoorState.OPEN+")" : "STOPPED (" + DoorState.STOPPED + ")")); 
         callback(null, state);
     },
