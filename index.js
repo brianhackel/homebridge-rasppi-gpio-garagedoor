@@ -187,9 +187,6 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
     getState: function(callback) {
         var isClosed = this.isClosed();
         var isOpen = this.isOpen();
-        // TODO: do i need to have this function try to determine OPENING/CLOSING state?
-        //       or is OPEN/CLOSED/STOPPED good enough?
-        // FIXME: look at the target state, compare to isopen and isclosed to determine
         let state;
         if (this.operating) {
             state = this.targetState == DoorState.OPEN ? DoorState.OPENING : DoorState.CLOSING;
