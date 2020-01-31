@@ -107,9 +107,11 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
                 that.currentDoorState.updateValue(DoorState.CLOSED);
                 that.operating = false;
             } else {
-                if (!that.isSoftwareSwitch && that.currentDoorState.getValue() == DoorState.CLOSED) {
+                if (!that.isSoftwareSwitch && that.currentDoorState.value == DoorState.CLOSED) {
                     that.log("door is opening manually");
                     that.currentDoorState.updateValue(DoorState.OPENING);
+                    that.targetState = DoorState.OPEN;
+                    that.targetDoorState.updateValue(DoorState.OPEN);
                     if (!that.operating) {
                         setTimeout(that.setFinalDoorState.bind(that), that.doorOpensInSeconds * 1000);
                         that.operating = true;
@@ -128,9 +130,11 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
                 that.currentDoorState.updateValue(DoorState.OPEN);
                 that.operating = false;
             } else {
-                if (!that.isSoftwareSwitch && that.currentDoorState.getValue() == DoorState.OPEN) {
+                if (!that.isSoftwareSwitch && that.currentDoorState.value == DoorState.OPEN) {
                     that.log("door is closing manually");
                     that.currentDoorState.updateValue(DoorState.CLOSING);
+                    that.targetState = DoorState.CLOSED;
+                    that.targetDoorState.updateValue(DoorState.CLOSED);
                     if (!that.operating) {
                         setTimeout(that.setFinalDoorState.bind(that), that.doorOpensInSeconds * 1000);
                         that.operating = true;
@@ -178,47 +182,45 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
     },
 
     setFinalDoorState: function() {
-        // basically, this just needs to check if we're still OPENING or CLOSING,
-        //       and if so, signal a problem and set state to STOPPED i guess
+        this.log("setting final door state");
         this.operating = false;
         if (this.isClosed()) {
             this.currentDoorState.updateValue(DoorState.CLOSED);
-            if (!this.isSoftwareSwitch) {
-                this.targetState = DoorState.CLOSED;
-                this.targetDoorState.updateValue(DoorState.CLOSED);
-            }
         } else if (this.isOpen()) {
             this.currentDoorState.updateValue(DoorState.OPEN);
-            if (!this.isSoftwareSwitch) {
-                this.targetState = DoorState.OPEN;
-                this.targetDoorState.updateValue(DoorState.OPEN);
-            }
         } else {
             this.currentDoorState.updateValue(DoorState.STOPPED);
         }
         this.isSoftwareSwitch = false;
+        this.log("   " + this.currentDoorState.value);
     },
     
-    checkOpening: function() {
-        if (this.closeDoorSensor.readSync() == 0) this.currentDoorState.updateValue(DoorState.OPENING);
+    checkOpeningClosing: function() {
+        this.log("checkOpeningClosing...");
+        let moving = false;
+        if (this.targetState == DoorState.CLOSED && this.openDoorSensor.readSync() == 0) {
+            moving = true;
+            this.log("  moving is true, currentState set to CLOSING");
+            this.currentDoorState.updateValue(DoorState.CLOSING);
+        }
+        if (this.targetState == DoorState.OPEN && this.closedDoorSensor.readSync() == 0) {
+            moving = true;
+            this.log("  moving is true, currentState set to OPENING");
+            this.currentDoorState.updateValue(DoorState.OPENING);
+        }
+        if (moving) {
+            this.operating = true;
+            setTimeout(this.setFinalDoorState.bind(this), this.doorOpensInSeconds * 1000);
+        }
     },
     
-    checkClosing: function() {
-        if (this.openDoorSensor.readSync() == 0) this.currentDoorState.updateValue(DoorState.CLOSING);
-    },
-
     setState: function(state, callback) {
         this.log("Setting target state to " + doorStateToString(state));
         this.targetState = state
         this.targetDoorState.updateValue(state);
         if ((state == DoorState.OPEN && this.isClosed()) || (state == DoorState.CLOSED && this.isOpen())) {
             this.log("Triggering GarageDoor Relay");
-            var that = this;
-            setTimeout(function() {
-                that.operating = true;
-                if (state == DoorState.CLOSED) that.checkClosing();
-                if (state == DoorState.OPEN) that.checkOpening();
-            }, 800);
+            setTimeout(this.checkOpeningClosing.bind(this), 800);
             this.switchOn();
             this.isSoftwareSwitch = true;
         }
@@ -226,6 +228,7 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
     },
 
     getState: function(callback) {
+        this.log("call to getState...");
         var isClosed = this.isClosed();
         var isOpen = this.isOpen();
         let state;
@@ -234,7 +237,7 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
         } else {
             state = isClosed ? DoorState.CLOSED : isOpen ? DoorState.OPEN : DoorState.STOPPED;
         }
-        this.log("GarageDoor is " + (isClosed ? "CLOSED ("+DoorState.CLOSED+")" : isOpen ? "OPEN ("+DoorState.OPEN+")" : "STOPPED (" + DoorState.STOPPED + ")")); 
+        this.log("  GarageDoor is " + (isClosed ? "CLOSED ("+DoorState.CLOSED+")" : isOpen ? "OPEN ("+DoorState.OPEN+")" : "STOPPED (" + DoorState.STOPPED + ")")); 
         callback(null, state);
     },
 
