@@ -44,7 +44,7 @@ function RaspPiGPIOGarageDoorAccessory(log, config) {
     }
 
     this.name = config.name;
-    this.debug = getVal(config, "debug", false);
+    this.isDebugOn = getVal(config, "debug", false);
     this.doorSwitchPin = config.doorSwitchPin;
     this.relayOn = getVal(config, "doorSwitchValue", 1);
     this.relayOff = 1-this.relayOn; //opposite of relayOn (O/1)
@@ -247,8 +247,8 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
     },
     
     debug: function(str) {
-        if (this.debug) {
-            this.log("DEBUG: ") + str;
+        if (this.isDebugOn) {
+            this.log("DEBUG: " + str);
         }
     }
 };
