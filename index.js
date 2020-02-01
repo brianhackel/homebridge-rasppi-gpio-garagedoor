@@ -44,6 +44,7 @@ function RaspPiGPIOGarageDoorAccessory(log, config) {
     }
 
     this.name = config.name;
+    this.debug = getVal(config, "debug", false);
     this.doorSwitchPin = config.doorSwitchPin;
     this.relayOn = getVal(config, "doorSwitchValue", 1);
     this.relayOff = 1-this.relayOn; //opposite of relayOn (O/1)
@@ -90,7 +91,7 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
         this.operating = false;
         if (this.isClosed()) initialDoorState = DoorState.CLOSED;
         if (this.isOpen()) initialDoorState = DoorState.OPEN;
-        this.log("Initial Door State: " + doorStateToString(initialDoorState));
+        this.debug("Initial Door State: " + doorStateToString(initialDoorState));
         this.currentDoorState.updateValue(initialDoorState);
         this.targetDoorState.updateValue(initialDoorState);
         this.targetState = initialDoorState;
@@ -99,16 +100,15 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
         var that = this;
         this.closedDoorSensor.watch(function (err, value) { //Watch for hardware interrupts
             if (err) {
-                that.error('There was an error', err);
-                that.currentDoorState.updateValue(DoorState.STOPPED);
+                that.log("ERROR: There was an error   " + err);
             }
             if (value == that.closedDoorSensorValue) {
-                that.log("door is closed");
+                that.debug("Door closed sensor tripped.");
                 that.currentDoorState.updateValue(DoorState.CLOSED);
                 that.operating = false;
             } else {
                 if (!that.isSoftwareSwitch && that.currentDoorState.value == DoorState.CLOSED) {
-                    that.log("door is opening manually");
+                    that.debug("door is opening manually");
                     that.currentDoorState.updateValue(DoorState.OPENING);
                     that.targetState = DoorState.OPEN;
                     that.targetDoorState.updateValue(DoorState.OPEN);
@@ -122,16 +122,15 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
         
         this.openDoorSensor.watch(function (err, value) { //Watch for hardware interrupts
             if (err) {
-                that.error('There was an error', err);
-                that.currentDoorState.updateValue(DoorState.STOPPED);
+                that.log("ERROR: There was an error   " + err);
             }
             if (value == that.openDoorSensorValue) {
-                that.log("door is open");
+                that.debug("Door open sensor tripped.");
                 that.currentDoorState.updateValue(DoorState.OPEN);
                 that.operating = false;
             } else {
                 if (!that.isSoftwareSwitch && that.currentDoorState.value == DoorState.OPEN) {
-                    that.log("door is closing manually");
+                    that.debug("door is closing manually");
                     that.currentDoorState.updateValue(DoorState.CLOSING);
                     that.targetState = DoorState.CLOSED;
                     that.targetDoorState.updateValue(DoorState.CLOSED);
@@ -170,7 +169,7 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
 
     switchOn: function() {
         this.writePin(this.doorButton, this.relayOn);
-        this.log("Turning on GarageDoor Relay, pin " + this.doorSwitchPin + " = " + this.relayOn);
+        this.debug("Turning on GarageDoor Relay, pin " + this.doorSwitchPin + " = " + this.relayOn);
         // we have to do it this way instead of using a lambda inside the setTimeout in order
         // to bind the context of 'this' inside the callback to call this.writePin() to turn the relay off
         setTimeout(this.switchOff.bind(this), this.doorSwitchPressTimeInMs);
@@ -178,34 +177,36 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
     
     switchOff: function() {
         this.writePin(this.doorButton, this.relayOff);
-        this.log("Turning off GarageDoor Relay, pin " + this.doorSwitchPin + " = " + this.relayOff);
+        this.debug("Turning off GarageDoor Relay, pin " + this.doorSwitchPin + " = " + this.relayOff);
     },
 
     setFinalDoorState: function() {
-        this.log("setting final door state");
+        this.debug("setting final door state to: ");
         this.operating = false;
         if (this.isClosed()) {
+            this.debug("     CLOSED");
             this.currentDoorState.updateValue(DoorState.CLOSED);
         } else if (this.isOpen()) {
+            this.debug("     OPEN");
             this.currentDoorState.updateValue(DoorState.OPEN);
         } else {
+            this.debug("     STOPPED");
             this.currentDoorState.updateValue(DoorState.STOPPED);
         }
         this.isSoftwareSwitch = false;
-        this.log("   " + this.currentDoorState.value);
     },
     
     checkOpeningClosing: function() {
-        this.log("checkOpeningClosing...");
+        this.debug("checkOpeningClosing...");
         let moving = false;
         if (this.targetState == DoorState.CLOSED && this.openDoorSensor.readSync() == 0) {
             moving = true;
-            this.log("  moving is true, currentState set to CLOSING");
+            this.debug("  moving is true, currentState set to CLOSING");
             this.currentDoorState.updateValue(DoorState.CLOSING);
         }
         if (this.targetState == DoorState.OPEN && this.closedDoorSensor.readSync() == 0) {
             moving = true;
-            this.log("  moving is true, currentState set to OPENING");
+            this.debug("  moving is true, currentState set to OPENING");
             this.currentDoorState.updateValue(DoorState.OPENING);
         }
         if (moving) {
@@ -228,7 +229,7 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
     },
 
     getState: function(callback) {
-        this.log("call to getState...");
+        this.debug("call to getState...");
         var isClosed = this.isClosed();
         var isOpen = this.isOpen();
         let state;
@@ -243,5 +244,11 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
 
     getServices: function() {
         return [this.infoService, this.garageDoorOpener];
+    },
+    
+    debug: function(str) {
+        if (this.debug) {
+            this.log("DEBUG: ") + str;
+        }
     }
 };

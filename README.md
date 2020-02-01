@@ -70,7 +70,8 @@ Configuration sample:
             "openDoorSensorPin": 25,
             "openDoorSensorValue": 1,
             "doorPollInMs": 4000,
-            "doorOpensInSeconds": 14
+            "doorOpensInSeconds": 14,
+            "debug": false
         }
     ],
 ```
@@ -87,5 +88,6 @@ Fields:
 * openDoorSensorValue - **OPTIONAL** Omit line if you don't have an open sensor.  1 = ACTIVE_HIGH, 0 = ACTIVE_LOW, defaults to 1 if not specified
 * doorPollInMs - Number of milliseconds to wait before polling the doorSensorPin to report if the door is open or closed
 * doorOpensInSeconds - Number of seconds it takes your garage door to open or close (err on the side of being longer than it actually takes)
+* debug - **OPTIONAL** turn on debug logging, true/false; default is false.
 
 
