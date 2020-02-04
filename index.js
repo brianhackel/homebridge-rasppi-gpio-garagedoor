@@ -113,6 +113,7 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
                     that.targetState = DoorState.OPEN;
                     that.targetDoorState.updateValue(DoorState.OPEN);
                     if (!that.operating) {
+                        // (new Promise(resolve => setTimeout(resolve, that.doorOpensInSeconds * 1000)).then(that.setFinalDoorState.bind(that)).then(that.operating = true)
                         setTimeout(that.setFinalDoorState.bind(that), that.doorOpensInSeconds * 1000);
                         that.operating = true;
                     }
@@ -181,17 +182,19 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
     },
 
     setFinalDoorState: function() {
-        this.debug("setting final door state to: ");
-        this.operating = false;
-        if (this.isClosed()) {
-            this.debug("     CLOSED");
-            this.currentDoorState.updateValue(DoorState.CLOSED);
-        } else if (this.isOpen()) {
-            this.debug("     OPEN");
-            this.currentDoorState.updateValue(DoorState.OPEN);
-        } else {
-            this.debug("     STOPPED");
-            this.currentDoorState.updateValue(DoorState.STOPPED);
+        if (this.operating) {
+            this.operating = false;
+            this.debug("setting final door state to: ");
+            if (this.isClosed()) {
+                this.debug("     CLOSED");
+                this.currentDoorState.updateValue(DoorState.CLOSED);
+            } else if (this.isOpen()) {
+                this.debug("     OPEN");
+                this.currentDoorState.updateValue(DoorState.OPEN);
+            } else {
+                this.debug("     STOPPED");
+                this.currentDoorState.updateValue(DoorState.STOPPED);
+            }
         }
         this.isSoftwareSwitch = false;
     },
@@ -199,19 +202,26 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
     checkOpeningClosing: function() {
         this.debug("checkOpeningClosing...");
         let moving = false;
+        let stopped = this.currentDoorState.value == DoorState.STOPPED;
+        let target = null;
         if (this.targetState == DoorState.CLOSED && this.openDoorSensor.readSync() == 0) {
             moving = true;
             this.debug("  moving is true, currentState set to CLOSING");
+            target = DoorState.CLOSED;
             this.currentDoorState.updateValue(DoorState.CLOSING);
         }
         if (this.targetState == DoorState.OPEN && this.closedDoorSensor.readSync() == 0) {
             moving = true;
             this.debug("  moving is true, currentState set to OPENING");
+            target = DoorState.OPEN;
             this.currentDoorState.updateValue(DoorState.OPENING);
         }
         if (moving) {
             this.operating = true;
             setTimeout(this.setFinalDoorState.bind(this), this.doorOpensInSeconds * 1000);
+        }
+        if (stopped && target != null) {
+            this.targetDoorState.updateValue(target);
         }
     },
     
@@ -219,7 +229,9 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
         this.log("Setting target state to " + doorStateToString(state));
         this.targetState = state
         this.targetDoorState.updateValue(state);
-        if ((state == DoorState.OPEN && this.isClosed()) || (state == DoorState.CLOSED && this.isOpen())) {
+        if (this.currentDoorState.value == DoorState.STOPPED || 
+              (state == DoorState.OPEN && this.isClosed()) || 
+              (state == DoorState.CLOSED && this.isOpen())) {
             this.log("Triggering GarageDoor Relay");
             setTimeout(this.checkOpeningClosing.bind(this), 800);
             this.switchOn();
