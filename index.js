@@ -38,12 +38,13 @@ function RaspPiGPIOGarageDoorAccessory(log, config) {
     this.log = log;
     this.version = require('./package.json').version;
     log("RaspPiGPIOGarageDoorAccessory version " + this.version);
-  
+
     if (!Gpio.accessible) {
         log("WARN! WARN! WARN! may not be able to control GPIO pins!");
     }
 
     this.name = config.name;
+    this.doorPollMs = getVal(config, "doorPollInMs", 5 * 60 * 1000);  // default 5 minutes
     this.isDebugOn = getVal(config, "debug", false);
     this.doorSwitchPin = config.doorSwitchPin;
     this.relayOn = getVal(config, "doorSwitchValue", 1);
@@ -84,8 +85,8 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
             .setCharacteristic(Characteristic.SerialNumber, "Version 1.0.0");
         
         this.doorButton = new Gpio(this.doorSwitchPin, this.relayOff ? 'high' : 'low');
-        this.closedDoorSensor = new Gpio(this.closedDoorSensorPin, 'in', 'both', {debounceTimeout: 100});
-        this.openDoorSensor = new Gpio(this.openDoorSensorPin, 'in', 'both', {debounceTimeout: 100});
+        this.closedDoorSensor = new Gpio(this.closedDoorSensorPin, 'in', 'both', {debounceTimeout: 1000});
+        this.openDoorSensor = new Gpio(this.openDoorSensorPin, 'in', 'both', {debounceTimeout: 1000});
        
         var initialDoorState = DoorState.STOPPED;
         this.operating = false;
@@ -96,6 +97,9 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
         this.targetDoorState.updateValue(initialDoorState);
         this.targetState = initialDoorState;
         this.isSoftwareSwitch = false;
+        
+        // start the poller:
+        setTimeout(this.checkStatePolling.bind(this), this.doorPollMs);
     
         var that = this;
         this.closedDoorSensor.watch(function (err, value) { //Watch for hardware interrupts
@@ -103,19 +107,28 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
                 that.log("ERROR: There was an error   " + err);
             }
             if (value == that.closedDoorSensorValue) {
-                that.debug("Door closed sensor tripped.");
-                that.currentDoorState.updateValue(DoorState.CLOSED);
-                that.operating = false;
+                if (that.currentDoorState.value != DoorState.CLOSED) {
+                    that.debug("Door closed sensor tripped.");
+                    that.currentDoorState.updateValue(DoorState.CLOSED);
+                    if (that.operating || that.currentDoorState.value == DoorState.STOPPED) {
+                        that.targetDoorState.updateValue(DoorState.CLOSED);
+                    }
+                    that.operating = false;
+                } else {
+                    that.debug("Door closed sensor tripped while door was ALREADY closed.");
+                }
             } else {
                 if (!that.isSoftwareSwitch && that.currentDoorState.value == DoorState.CLOSED) {
-                    that.debug("door is opening manually");
-                    that.currentDoorState.updateValue(DoorState.OPENING);
-                    that.targetState = DoorState.OPEN;
-                    that.targetDoorState.updateValue(DoorState.OPEN);
-                    if (!that.operating) {
-                        // (new Promise(resolve => setTimeout(resolve, that.doorOpensInSeconds * 1000)).then(that.setFinalDoorState.bind(that)).then(that.operating = true)
-                        setTimeout(that.setFinalDoorState.bind(that), that.doorOpensInSeconds * 1000);
-                        that.operating = true;
+                    if (!that.isClosed()) {
+                        that.debug("door is opening manually");
+                        that.currentDoorState.updateValue(DoorState.OPENING);
+                        that.targetState = DoorState.OPEN;
+                        that.targetDoorState.updateValue(DoorState.OPEN);
+                        if (!that.operating) {
+                            // (new Promise(resolve => setTimeout(resolve, that.doorOpensInSeconds * 1000)).then(that.setFinalDoorState.bind(that)).then(that.operating = true)
+                            setTimeout(that.setFinalDoorState.bind(that), that.doorOpensInSeconds * 1000);
+                            that.operating = true;
+                        }
                     }
                 }
             }
@@ -126,18 +139,27 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
                 that.log("ERROR: There was an error   " + err);
             }
             if (value == that.openDoorSensorValue) {
-                that.debug("Door open sensor tripped.");
-                that.currentDoorState.updateValue(DoorState.OPEN);
-                that.operating = false;
+                if (that.currentDoorState.value != DoorState.OPEN) {
+                    that.debug("Door open sensor tripped.");
+                    that.currentDoorState.updateValue(DoorState.OPEN);
+                    if (that.operating || that.currentDoorState.value == DoorState.STOPPED) {
+                        that.targetDoorState.updateValue(DoorState.OPEN);
+                    }
+                    that.operating = false;
+                } else {
+                    that.debug("Door open sensor tripped while door was ALREADY open.");
+                }
             } else {
                 if (!that.isSoftwareSwitch && that.currentDoorState.value == DoorState.OPEN) {
-                    that.debug("door is closing manually");
-                    that.currentDoorState.updateValue(DoorState.CLOSING);
-                    that.targetState = DoorState.CLOSED;
-                    that.targetDoorState.updateValue(DoorState.CLOSED);
-                    if (!that.operating) {
-                        setTimeout(that.setFinalDoorState.bind(that), that.doorOpensInSeconds * 1000);
-                        that.operating = true;
+                    if (!that.isOpen()) {
+                        that.debug("door is closing manually");
+                        that.currentDoorState.updateValue(DoorState.CLOSING);
+                        that.targetState = DoorState.CLOSED;
+                        that.targetDoorState.updateValue(DoorState.CLOSED);
+                        if (!that.operating) {
+                            setTimeout(that.setFinalDoorState.bind(that), that.doorOpensInSeconds * 1000);
+                            that.operating = true;
+                        }
                     }
                 }
             }
@@ -154,6 +176,7 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
 
     readPin: function(pin) {
         return pin.readSync();
+        // TODO: pin.read() returns a Promise that resolves to the value read
     },
 
     writePin: function(pin,val) {
@@ -180,6 +203,8 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
         this.writePin(this.doorButton, this.relayOff);
         this.debug("Turning off GarageDoor Relay, pin " + this.doorSwitchPin + " = " + this.relayOff);
     },
+    
+    // TODO: async pushButton() which does a sleep in between on and off. consider having it return a Promise so we can take action after we know the door is moving
 
     setFinalDoorState: function() {
         if (this.operating) {
@@ -199,18 +224,33 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
         this.isSoftwareSwitch = false;
     },
     
+    checkStatePolling: function() {
+        if (this.isClosed()) {
+            this.operating = false;
+            this.targetState = DoorState.CLOSED;
+            this.targetDoorState.updateValue(DoorState.CLOSED);
+            this.currentDoorState.updateValue(DoorState.CLOSED);
+        } else if (this.isOpen()) {
+            this.operating = false;
+            this.targetState = DoorState.OPEN;
+            this.targetDoorState.updateValue(DoorState.OPEN);
+            this.currentDoorState.updateValue(DoorState.OPEN);
+        }
+        setTimeout(this.checkStatePolling.bind(this), this.doorPollMs);
+    },
+    
     checkOpeningClosing: function() {
         this.debug("checkOpeningClosing...");
         let moving = false;
         let stopped = this.currentDoorState.value == DoorState.STOPPED;
         let target = null;
-        if (this.targetState == DoorState.CLOSED && this.openDoorSensor.readSync() == 0) {
+        if (this.targetState == DoorState.CLOSED && !this.isOpen()) {
             moving = true;
             this.debug("  moving is true, currentState set to CLOSING");
             target = DoorState.CLOSED;
             this.currentDoorState.updateValue(DoorState.CLOSING);
         }
-        if (this.targetState == DoorState.OPEN && this.closedDoorSensor.readSync() == 0) {
+        if (this.targetState == DoorState.OPEN && !this.isClosed()) {
             moving = true;
             this.debug("  moving is true, currentState set to OPENING");
             target = DoorState.OPEN;
@@ -226,6 +266,7 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
     },
     
     setState: function(state, callback) {
+        // TODO: consider using async/await to turn switch on/off with a brief sleep in between
         this.log("Setting target state to " + doorStateToString(state));
         this.targetState = state
         this.targetDoorState.updateValue(state);
