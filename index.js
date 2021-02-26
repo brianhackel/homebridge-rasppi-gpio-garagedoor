@@ -171,7 +171,7 @@ RaspPiGPIOGarageDoorAccessory.prototype = {
     },
     
     getObstructionState: function(callback) {
-        callback(null, Characteristic.ObstructionDetected.FALSE);
+        callback(null, false);
     },
 
     readPin: function(pin) {
